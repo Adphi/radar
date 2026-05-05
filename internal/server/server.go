@@ -39,9 +39,9 @@ import (
 	prometheuspkg "github.com/skyhook-io/radar/internal/prometheus"
 	"github.com/skyhook-io/radar/internal/settings"
 	"github.com/skyhook-io/radar/internal/timeline"
-	topology "github.com/skyhook-io/radar/pkg/topology"
 	"github.com/skyhook-io/radar/internal/updater"
 	"github.com/skyhook-io/radar/internal/version"
+	topology "github.com/skyhook-io/radar/pkg/topology"
 )
 
 // Server is the Explorer HTTP server
@@ -122,6 +122,7 @@ func New(cfg Config) *Server {
 			}
 
 			s.oidcHandler = oidcHandler
+			s.authConfig.Refresh = oidcHandler
 		}
 
 		if s.authConfig.Mode == "proxy" {

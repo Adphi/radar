@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -25,10 +27,11 @@ const maxCookieSize = 3800
 
 // Session represents a parsed session cookie.
 type Session struct {
-	User      *User
-	SID       string    // stable session identifier (empty for pre-upgrade cookies)
-	IDToken   string    // raw OIDC id_token for RP-Initiated Logout
-	ExpiresAt time.Time // when the cookie expires
+	User         *User
+	SID          string    // stable session identifier (empty for pre-upgrade cookies)
+	IDToken      string    // raw OIDC id_token for RP-Initiated Logout
+	RefreshToken string    // raw OIDC refresh_token, decrypted from the signed cookie payload
+	ExpiresAt    time.Time // when the cookie expires
 }
 
 // cookiePayload is the data stored in the session cookie
@@ -38,6 +41,7 @@ type cookiePayload struct {
 	ExpiresAt int64    `json:"e"`
 	IDToken   string   `json:"t,omitempty"` // raw OIDC id_token for RP-Initiated Logout
 	SID       string   `json:"s,omitempty"` // session ID for backchannel logout revocation
+	Refresh   string   `json:"r,omitempty"` // encrypted OIDC refresh_token for session renewal
 }
 
 // NewSessionID generates a random 16-byte hex session ID.
@@ -53,6 +57,14 @@ func NewSessionID() string {
 // Format: base64(json) + "." + base64(hmac-sha256).
 // The sid must be non-empty — use NewSessionID() to generate one.
 func CreateSessionCookie(user *User, sid, idToken, secret string, ttl time.Duration, secure bool) *http.Cookie {
+	return CreateSessionCookieWithRefresh(user, sid, idToken, "", secret, ttl, secure)
+}
+
+func CreateSessionCookieWithRefresh(user *User, sid, idToken, refreshToken, secret string, ttl time.Duration, secure bool) *http.Cookie {
+	return CreateSessionCookieWithRefreshTTL(user, sid, idToken, refreshToken, secret, ttl, ttl, secure)
+}
+
+func CreateSessionCookieWithRefreshTTL(user *User, sid, idToken, refreshToken, secret string, ttl, refreshTTL time.Duration, secure bool) *http.Cookie {
 	if sid == "" {
 		panic(fmt.Sprintf("[auth] CreateSessionCookie called with empty sid for user %s", user.Username))
 	}
@@ -63,6 +75,14 @@ func CreateSessionCookie(user *User, sid, idToken, secret string, ttl time.Durat
 		ExpiresAt: time.Now().Add(ttl).Unix(),
 		IDToken:   idToken,
 		SID:       sid,
+	}
+	if refreshToken != "" {
+		encrypted, err := encryptToken(refreshToken, secret)
+		if err != nil {
+			log.Printf("[auth] Failed to encrypt refresh token for %s: %v", user.Username, err)
+		} else {
+			payload.Refresh = encrypted
+		}
 	}
 
 	value := buildCookieValue(payload, secret)
@@ -77,9 +97,20 @@ func CreateSessionCookie(user *User, sid, idToken, secret string, ttl time.Durat
 		payload.IDToken = ""
 		value = buildCookieValue(payload, secret)
 	}
+	if len(value) > maxCookieSize && payload.Refresh != "" {
+		log.Printf("[auth] Session cookie for %s exceeds %d bytes (%d), dropping refresh token to fit",
+			user.Username, maxCookieSize, len(value))
+		payload.Refresh = ""
+		value = buildCookieValue(payload, secret)
+	}
 	if len(value) > maxCookieSize {
 		log.Printf("[auth] WARNING: Session cookie for %s is %d bytes (limit ~%d) — browser may silently drop it. Reduce the number of groups in the OIDC token.",
 			user.Username, len(value), maxCookieSize)
+	}
+
+	maxAge := int(ttl.Seconds())
+	if refreshToken != "" && refreshTTL > ttl {
+		maxAge = int(refreshTTL.Seconds())
 	}
 
 	return &http.Cookie{
@@ -89,7 +120,7 @@ func CreateSessionCookie(user *User, sid, idToken, secret string, ttl time.Durat
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(ttl.Seconds()),
+		MaxAge:   maxAge,
 	}
 }
 
@@ -97,6 +128,14 @@ func CreateSessionCookie(user *User, sid, idToken, secret string, ttl time.Durat
 // Returns nil if the cookie is missing, invalid, or expired.
 // Pre-upgrade cookies without a SID parse successfully with Session.SID == "".
 func ParseSessionCookie(r *http.Request, secret string) *Session {
+	return parseSessionCookie(r, secret, false)
+}
+
+func ParseExpiredSessionCookie(r *http.Request, secret string) *Session {
+	return parseSessionCookie(r, secret, true)
+}
+
+func parseSessionCookie(r *http.Request, secret string, allowExpired bool) *Session {
 	cookie, err := r.Cookie(DefaultCookieName)
 	if err != nil {
 		return nil
@@ -128,9 +167,19 @@ func ParseSessionCookie(r *http.Request, secret string) *Session {
 	}
 
 	// Check expiration
-	if time.Now().Unix() > p.ExpiresAt {
+	if !allowExpired && time.Now().Unix() > p.ExpiresAt {
 		log.Printf("[auth] Session cookie expired for user %q — prompting re-auth", p.Username)
 		return nil
+	}
+
+	refreshToken := ""
+	if p.Refresh != "" {
+		decrypted, err := decryptToken(p.Refresh, secret)
+		if err != nil {
+			log.Printf("[auth] Failed to decrypt refresh token for user %q: %v", p.Username, err)
+		} else {
+			refreshToken = decrypted
+		}
 	}
 
 	return &Session{
@@ -138,10 +187,58 @@ func ParseSessionCookie(r *http.Request, secret string) *Session {
 			Username: p.Username,
 			Groups:   p.Groups,
 		},
-		SID:       p.SID,
-		IDToken:   p.IDToken,
-		ExpiresAt: time.Unix(p.ExpiresAt, 0),
+		SID:          p.SID,
+		IDToken:      p.IDToken,
+		RefreshToken: refreshToken,
+		ExpiresAt:    time.Unix(p.ExpiresAt, 0),
 	}
+}
+
+func encryptToken(token, secret string) (string, error) {
+	block, err := aes.NewCipher(cookieEncryptionKey(secret))
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	sealed := gcm.Seal(nonce, nonce, []byte(token), nil)
+	return base64.RawURLEncoding.EncodeToString(sealed), nil
+}
+
+func decryptToken(encoded, secret string) (string, error) {
+	data, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(cookieEncryptionKey(secret))
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(data) < gcm.NonceSize() {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+	nonce := data[:gcm.NonceSize()]
+	ciphertext := data[gcm.NonceSize():]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(plaintext), nil
+}
+
+func cookieEncryptionKey(secret string) []byte {
+	sum := sha256.Sum256([]byte("radar refresh token\x00" + secret))
+	return sum[:]
 }
 
 // buildCookieValue marshals the payload and signs it: base64(json) + "." + base64(hmac).

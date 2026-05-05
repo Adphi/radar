@@ -10,7 +10,9 @@ import pkgauth "github.com/skyhook-io/radar/pkg/auth"
 type Config = pkgauth.Config
 type User = pkgauth.User
 type Session = pkgauth.Session
+type RefreshedSession = pkgauth.RefreshedSession
 type SessionRevoker = pkgauth.SessionRevoker
+type SessionRefresher = pkgauth.SessionRefresher
 type UserPermissions = pkgauth.UserPermissions
 type PermissionCache = pkgauth.PermissionCache
 type CloudRole = pkgauth.CloudRole
@@ -32,16 +34,19 @@ const ErrCodeCloudRoleInsufficient = pkgauth.ErrCodeCloudRoleInsufficient
 
 // Re-export functions from pkg/auth
 var (
-	UserFromContext          = pkgauth.UserFromContext
-	ContextWithUser          = pkgauth.ContextWithUser
-	NewPermissionCache       = pkgauth.NewPermissionCache
-	DiscoverNamespaces       = pkgauth.DiscoverNamespaces
-	SubjectCanI              = pkgauth.SubjectCanI
-	FilterNamespacesForUser  = pkgauth.FilterNamespacesForUser
-	CreateSessionCookie      = pkgauth.CreateSessionCookie
-	NewSessionID             = pkgauth.NewSessionID
-	ParseSessionCookie       = pkgauth.ParseSessionCookie
-	ClearSessionCookie       = pkgauth.ClearSessionCookie
-	CloudRoleFromGroups      = pkgauth.CloudRoleFromGroups
-	CloudRoleFromContext     = pkgauth.CloudRoleFromContext
+	UserFromContext                   = pkgauth.UserFromContext
+	ContextWithUser                   = pkgauth.ContextWithUser
+	NewPermissionCache                = pkgauth.NewPermissionCache
+	DiscoverNamespaces                = pkgauth.DiscoverNamespaces
+	SubjectCanI                       = pkgauth.SubjectCanI
+	FilterNamespacesForUser           = pkgauth.FilterNamespacesForUser
+	CreateSessionCookie               = pkgauth.CreateSessionCookie
+	CreateSessionCookieWithRefresh    = pkgauth.CreateSessionCookieWithRefresh
+	CreateSessionCookieWithRefreshTTL = pkgauth.CreateSessionCookieWithRefreshTTL
+	NewSessionID                      = pkgauth.NewSessionID
+	ParseSessionCookie                = pkgauth.ParseSessionCookie
+	ParseExpiredSessionCookie         = pkgauth.ParseExpiredSessionCookie
+	ClearSessionCookie                = pkgauth.ClearSessionCookie
+	CloudRoleFromGroups               = pkgauth.CloudRoleFromGroups
+	CloudRoleFromContext              = pkgauth.CloudRoleFromContext
 )

@@ -224,6 +224,69 @@ func TestSessionIDToken_NoIDToken(t *testing.T) {
 	}
 }
 
+func TestCreateSessionCookie_WithRefreshToken(t *testing.T) {
+	secret := "test-secret"
+	user := &User{Username: "alice"}
+	refreshToken := "refresh-token-value"
+
+	cookie := CreateSessionCookieWithRefresh(user, NewSessionID(), "", refreshToken, secret, 1*time.Hour, false)
+	if strings.Contains(cookie.Value, refreshToken) {
+		t.Fatal("refresh token should not be stored in plaintext")
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(cookie)
+
+	parsed := ParseSessionCookie(req, secret)
+	if parsed == nil {
+		t.Fatal("ParseSessionCookie returned nil")
+	}
+	if parsed.RefreshToken != refreshToken {
+		t.Errorf("RefreshToken = %q, want %q", parsed.RefreshToken, refreshToken)
+	}
+}
+
+func TestCreateSessionCookieWithRefreshTTL_ExtendsBrowserCookie(t *testing.T) {
+	secret := "test-secret"
+	user := &User{Username: "alice"}
+	cookie := CreateSessionCookieWithRefreshTTL(user, NewSessionID(), "", "refresh-token", secret, 1*time.Hour, 24*time.Hour, false)
+
+	if cookie.MaxAge != int((24 * time.Hour).Seconds()) {
+		t.Errorf("MaxAge = %d, want refresh TTL", cookie.MaxAge)
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(cookie)
+	parsed := ParseSessionCookie(req, secret)
+	if parsed == nil {
+		t.Fatal("ParseSessionCookie returned nil")
+	}
+	if time.Until(parsed.ExpiresAt) > 2*time.Hour {
+		t.Errorf("server-side ExpiresAt should still use session TTL, got %s", parsed.ExpiresAt)
+	}
+}
+
+func TestParseExpiredSessionCookie_WithRefreshToken(t *testing.T) {
+	secret := "test-secret"
+	user := &User{Username: "alice"}
+	refreshToken := "refresh-token-value"
+	cookie := CreateSessionCookieWithRefresh(user, NewSessionID(), "", refreshToken, secret, -1*time.Second, false)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(cookie)
+
+	if ParseSessionCookie(req, secret) != nil {
+		t.Fatal("ParseSessionCookie should reject expired cookies")
+	}
+	parsed := ParseExpiredSessionCookie(req, secret)
+	if parsed == nil {
+		t.Fatal("ParseExpiredSessionCookie returned nil")
+	}
+	if parsed.RefreshToken != refreshToken {
+		t.Errorf("RefreshToken = %q, want %q", parsed.RefreshToken, refreshToken)
+	}
+}
+
 func TestCreateSessionCookie_WithSID(t *testing.T) {
 	secret := "test-secret"
 	user := &User{Username: "alice"}

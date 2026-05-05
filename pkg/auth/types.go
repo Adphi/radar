@@ -13,9 +13,11 @@ import (
 // Supports three modes: "none" (default), "proxy" (trust reverse-proxy headers),
 // and "oidc" (OpenID Connect login flow).
 type Config struct {
-	Mode      string        // "none" (default), "proxy", "oidc"
-	Secret    string        // HMAC signing key for session cookies
-	CookieTTL time.Duration // default 4h, sliding
+	Mode           string        // "none" (default), "proxy", "oidc"
+	Secret         string        // HMAC signing key for session cookies
+	CookieTTL      time.Duration // default 4h, sliding
+	OIDCRefreshTTL time.Duration
+	Refresh        SessionRefresher
 
 	// Proxy mode
 	UserHeader   string // default "X-Forwarded-User"
@@ -39,6 +41,17 @@ type Config struct {
 	OIDCBackchannelLogout     bool     // enable backchannel logout endpoint
 }
 
+type RefreshedSession struct {
+	User         *User
+	SID          string
+	IDToken      string
+	RefreshToken string
+}
+
+type SessionRefresher interface {
+	RefreshSession(ctx context.Context, session *Session) (*RefreshedSession, error)
+}
+
 // SessionRevoker checks whether a session has been revoked (e.g., via OIDC
 // backchannel logout). Used by the auth middleware to reject revoked sessions.
 type SessionRevoker interface {
@@ -55,6 +68,9 @@ type User struct {
 func (c *Config) Defaults() {
 	if c.CookieTTL == 0 {
 		c.CookieTTL = 4 * time.Hour // default 4h, sliding — extends on activity
+	}
+	if c.OIDCRefreshTTL == 0 {
+		c.OIDCRefreshTTL = 30 * 24 * time.Hour
 	}
 	if c.UserHeader == "" {
 		c.UserHeader = "X-Forwarded-User"

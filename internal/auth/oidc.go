@@ -154,6 +154,7 @@ func (h *OIDCHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	// If the user just logged out, force the IdP to show a login prompt instead
 	// of silently re-authenticating with an existing SSO session.
 	var authOpts []oauth2.AuthCodeOption
+	authOpts = append(authOpts, oauth2.AccessTypeOffline)
 	if cookie, err := r.Cookie(oidcForceLoginCookieName); err == nil && cookie.Value == "1" {
 		authOpts = append(authOpts, oauth2.SetAuthURLParam("prompt", "login"))
 		// Clear the cookie — only force login once
@@ -223,15 +224,31 @@ func (h *OIDCHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract claims
-	var claims map[string]any
-	if err := idToken.Claims(&claims); err != nil {
+	user, sid, _, err := h.sessionIdentityFromIDToken(idToken)
+	if err != nil {
 		log.Printf("[oidc] Failed to parse claims: %v", err)
-		http.Error(w, "authentication failed: invalid claims", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Extract username (prefer email, fall back to sub)
+	refreshToken := token.RefreshToken
+
+	// Create session cookie (include raw ID token for RP-Initiated Logout)
+	secure := true // OIDC typically behind TLS
+	http.SetCookie(w, CreateSessionCookieWithRefreshTTL(user, sid, rawIDToken, refreshToken, h.cfg.Secret, h.cfg.CookieTTL, h.cfg.OIDCRefreshTTL, secure))
+
+	log.Printf("[oidc] User %s authenticated (groups: %v)", user.Username, user.Groups)
+
+	// Redirect to app
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+func (h *OIDCHandler) sessionIdentityFromIDToken(idToken *oidc.IDToken) (*User, string, map[string]any, error) {
+	var claims map[string]any
+	if err := idToken.Claims(&claims); err != nil {
+		return nil, "", nil, fmt.Errorf("authentication failed: invalid claims")
+	}
+
 	username := ""
 	if email, ok := claims["email"].(string); ok && email != "" {
 		username = email
@@ -241,8 +258,7 @@ func (h *OIDCHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	if username == "" {
 		log.Printf("[oidc] No username claim (email or sub) in ID token")
-		http.Error(w, "authentication failed: no username in token", http.StatusBadRequest)
-		return
+		return nil, "", nil, fmt.Errorf("authentication failed: no username in token")
 	}
 
 	// Extract groups from configured claim
@@ -283,14 +299,51 @@ func (h *OIDCHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[oidc] Generated local session ID (IdP did not provide sid claim)")
 	}
 
-	// Create session cookie (include raw ID token for RP-Initiated Logout)
-	secure := true // OIDC typically behind TLS
-	http.SetCookie(w, CreateSessionCookie(user, sid, rawIDToken, h.cfg.Secret, h.cfg.CookieTTL, secure))
+	return user, sid, claims, nil
+}
 
-	log.Printf("[oidc] User %s authenticated (groups: %v)", username, groups)
+func (h *OIDCHandler) RefreshSession(ctx context.Context, session *Session) (*RefreshedSession, error) {
+	if session == nil || session.RefreshToken == "" {
+		return nil, fmt.Errorf("missing refresh token")
+	}
 
-	// Redirect to app
-	http.Redirect(w, r, "/", http.StatusFound)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	if h.httpClient != nil {
+		ctx = context.WithValue(ctx, oauth2.HTTPClient, h.httpClient)
+	}
+
+	token := &oauth2.Token{RefreshToken: session.RefreshToken}
+	refreshed, err := h.oauth.TokenSource(ctx, token).Token()
+	if err != nil {
+		return nil, err
+	}
+
+	rawIDToken, ok := refreshed.Extra("id_token").(string)
+	if !ok || rawIDToken == "" {
+		return nil, fmt.Errorf("refresh response did not include id_token")
+	}
+
+	idToken, err := h.verifier.Verify(ctx, rawIDToken)
+	if err != nil {
+		return nil, fmt.Errorf("invalid refreshed id_token: %w", err)
+	}
+
+	user, sid, _, err := h.sessionIdentityFromIDToken(idToken)
+	if err != nil {
+		return nil, err
+	}
+	if sid == "" {
+		sid = session.SID
+	}
+	refreshToken := refreshed.RefreshToken
+	if refreshToken == "" {
+		refreshToken = session.RefreshToken
+	}
+
+	log.Printf("[oidc] Refreshed session for %s", user.Username)
+	return &RefreshedSession{User: user, SID: sid, IDToken: rawIDToken, RefreshToken: refreshToken}, nil
 }
 
 // HandleLogout clears the local session and, when the IdP supports RP-Initiated

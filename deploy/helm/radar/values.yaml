@@ -188,6 +188,9 @@ auth:
   existingSecretKey: "auth-secret"
   # Session cookie TTL (sliding — extends on activity, idle sessions expire after this duration)
   cookieTTL: "4h"
+  # OIDC refresh cookie TTL. When a provider issues a refresh token, Radar can
+  # renew expired Radar sessions until this longer browser-cookie lifetime ends.
+  oidcRefreshTTL: "720h"
   # Proxy mode settings
   proxy:
     userHeader: "X-Forwarded-User"
@@ -204,6 +207,7 @@ auth:
     clientSecretKey: "client-secret"
     redirectURL: ""
     # OIDC scopes requested during login. Empty uses Radar's default: openid, profile, email.
+    # Add offline_access here if your provider requires it to issue refresh tokens.
     scopes: []
     groupsClaim: "groups"
     # URL to redirect after OIDC provider logout (must be registered with IdP)

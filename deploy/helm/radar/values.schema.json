@@ -173,6 +173,7 @@
         "existingSecret": { "type": "string" },
         "existingSecretKey": { "type": "string" },
         "cookieTTL": { "type": "string", "description": "Go duration string, e.g. \"4h\"." },
+        "oidcRefreshTTL": { "type": "string", "description": "Go duration string for OIDC refresh-token cookie lifetime, e.g. \"720h\"." },
         "proxy": {
           "type": "object",
           "additionalProperties": false,
