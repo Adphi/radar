@@ -139,3 +139,62 @@ func TestImpersonatedConfig_DoesNotMutateBase(t *testing.T) {
 		t.Error("ImpersonatedConfig must not mutate the base config")
 	}
 }
+
+func TestConfig_KubernetesUser_AppliesOIDCPrefixes(t *testing.T) {
+	cfg := Config{
+		Mode:               "oidc",
+		OIDCUsernamePrefix: "oidc:",
+		OIDCGroupsPrefix:   "oidc:",
+	}
+	user := &User{Username: "alice", Groups: []string{"dev", "ops"}}
+
+	got := cfg.KubernetesUser(user)
+
+	if got.Username != "oidc:alice" {
+		t.Errorf("username = %q, want %q", got.Username, "oidc:alice")
+	}
+	wantGroups := []string{"oidc:dev", "oidc:ops"}
+	for i, want := range wantGroups {
+		if got.Groups[i] != want {
+			t.Errorf("groups[%d] = %q, want %q", i, got.Groups[i], want)
+		}
+	}
+	if user.Username != "alice" || user.Groups[0] != "dev" {
+		t.Errorf("KubernetesUser mutated input user: %+v", user)
+	}
+}
+
+func TestConfig_KubernetesUser_PrefixesClaimsThatStartWithPrefix(t *testing.T) {
+	cfg := Config{
+		Mode:               "oidc",
+		OIDCUsernamePrefix: "oidc:",
+		OIDCGroupsPrefix:   "oidc:",
+	}
+	user := &User{Username: "oidc:alice", Groups: []string{"oidc:dev"}}
+
+	got := cfg.KubernetesUser(user)
+
+	if got.Username != "oidc:oidc:alice" {
+		t.Errorf("username = %q, want %q", got.Username, "oidc:oidc:alice")
+	}
+	if got.Groups[0] != "oidc:oidc:dev" {
+		t.Errorf("groups[0] = %q, want %q", got.Groups[0], "oidc:oidc:dev")
+	}
+}
+
+func TestConfig_KubernetesUser_IgnoresPrefixesOutsideOIDC(t *testing.T) {
+	cfg := Config{
+		Mode:               "proxy",
+		OIDCUsernamePrefix: "oidc:",
+		OIDCGroupsPrefix:   "oidc:",
+	}
+
+	got := cfg.KubernetesUser(&User{Username: "alice", Groups: []string{"dev"}})
+
+	if got.Username != "alice" {
+		t.Errorf("username = %q, want %q", got.Username, "alice")
+	}
+	if got.Groups[0] != "dev" {
+		t.Errorf("groups[0] = %q, want %q", got.Groups[0], "dev")
+	}
+}

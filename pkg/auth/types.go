@@ -102,6 +102,31 @@ func (c *Config) Defaults() {
 	}
 }
 
+// KubernetesUser returns the identity Kubernetes sees for auth checks and impersonation.
+func (c Config) KubernetesUser(user *User) *User {
+	if user == nil {
+		return nil
+	}
+
+	next := &User{
+		Username: user.Username,
+		Groups:   append([]string(nil), user.Groups...),
+	}
+	if c.Mode != "oidc" {
+		return next
+	}
+
+	if c.OIDCUsernamePrefix != "" {
+		next.Username = c.OIDCUsernamePrefix + next.Username
+	}
+	if c.OIDCGroupsPrefix != "" {
+		for i, group := range next.Groups {
+			next.Groups[i] = c.OIDCGroupsPrefix + group
+		}
+	}
+	return next
+}
+
 // Enabled returns true if auth mode is not "none"
 func (c *Config) Enabled() bool {
 	return c.Mode != "" && c.Mode != "none"
