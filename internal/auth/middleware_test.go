@@ -33,6 +33,12 @@ func proxyConfig() Config {
 	}
 }
 
+type refreshFunc func(context.Context, *Session) (*RefreshedSession, error)
+
+func (f refreshFunc) RefreshSession(ctx context.Context, session *Session) (*RefreshedSession, error) {
+	return f(ctx, session)
+}
+
 func TestMiddleware_ExemptPaths(t *testing.T) {
 	mw := Authenticate(proxyConfig())
 	handler := mw(http.HandlerFunc(echoUser))
@@ -41,13 +47,13 @@ func TestMiddleware_ExemptPaths(t *testing.T) {
 		path string
 		want int
 	}{
-		{"/api/health", http.StatusNoContent},      // exempt
-		{"/api/connection", http.StatusNoContent},   // exempt
-		{"/auth/login", http.StatusNoContent},       // exempt
-		{"/auth/callback", http.StatusNoContent},    // exempt
-		{"/", http.StatusNoContent},                 // static asset — exempt
-		{"/index.html", http.StatusNoContent},       // static asset — exempt
-		{"/assets/main.js", http.StatusNoContent},   // static asset — exempt
+		{"/api/health", http.StatusNoContent},            // exempt
+		{"/api/connection", http.StatusNoContent},        // exempt
+		{"/auth/login", http.StatusNoContent},            // exempt
+		{"/auth/callback", http.StatusNoContent},         // exempt
+		{"/", http.StatusNoContent},                      // static asset — exempt
+		{"/index.html", http.StatusNoContent},            // static asset — exempt
+		{"/assets/main.js", http.StatusNoContent},        // static asset — exempt
 		{"/api/resources/pods", http.StatusUnauthorized}, // requires auth
 		{"/api/topology", http.StatusUnauthorized},       // requires auth
 		{"/mcp", http.StatusUnauthorized},                // requires auth
@@ -540,6 +546,59 @@ func TestMiddleware_SlidingTTL_PreservesIDToken(t *testing.T) {
 		}
 	}
 	t.Error("expected Set-Cookie for sliding re-issue")
+}
+
+func TestMiddleware_ExpiredOIDCCookie_RefreshesSession(t *testing.T) {
+	cfg := proxyConfig()
+	cfg.Mode = "oidc"
+	cfg.OIDCRefreshTTL = 24 * time.Hour
+	cfg.Refresh = refreshFunc(func(ctx context.Context, session *Session) (*RefreshedSession, error) {
+		if session.RefreshToken != "old-refresh" {
+			t.Errorf("RefreshToken = %q, want old-refresh", session.RefreshToken)
+		}
+		return &RefreshedSession{
+			User:         &User{Username: "alice", Groups: []string{"devs"}},
+			SID:          session.SID,
+			IDToken:      "new-id-token",
+			RefreshToken: "new-refresh",
+		}, nil
+	})
+	mw := Authenticate(cfg)
+	handler := mw(http.HandlerFunc(echoUser))
+
+	sid := NewSessionID()
+	cookie := CreateSessionCookieWithRefresh(&User{Username: "alice"}, sid, "old-id-token", "old-refresh", cfg.Secret, -1*time.Second, false)
+	req := httptest.NewRequest("GET", "/api/topology", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name != DefaultCookieName {
+			continue
+		}
+		parseReq := httptest.NewRequest("GET", "/", nil)
+		parseReq.AddCookie(c)
+		session := ParseSessionCookie(parseReq, cfg.Secret)
+		if session == nil {
+			t.Fatal("failed to parse refreshed cookie")
+		}
+		if session.IDToken != "new-id-token" {
+			t.Errorf("IDToken = %q, want new-id-token", session.IDToken)
+		}
+		if session.RefreshToken != "new-refresh" {
+			t.Errorf("RefreshToken = %q, want new-refresh", session.RefreshToken)
+		}
+		if c.MaxAge != int((24 * time.Hour).Seconds()) {
+			t.Errorf("MaxAge = %d, want refresh TTL", c.MaxAge)
+		}
+		return
+	}
+	t.Fatal("expected refreshed Set-Cookie")
 }
 
 func TestMiddleware_SlidingTTL_LegacyCookieMintsSID(t *testing.T) {

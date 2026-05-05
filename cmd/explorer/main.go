@@ -67,6 +67,7 @@ func main() {
 	authMode := flag.String("auth-mode", "none", "Authentication mode: none, proxy, or oidc")
 	authSecret := flag.String("auth-secret", "", "HMAC secret key for session cookies (auto-generated if empty)")
 	authCookieTTL := flag.Duration("auth-cookie-ttl", 4*time.Hour, "Session cookie TTL (sliding — extends on activity)")
+	authOIDCRefreshTTL := flag.Duration("auth-oidc-refresh-ttl", 30*24*time.Hour, "OIDC refresh cookie TTL for renewing expired Radar sessions")
 	authUserHeader := flag.String("auth-user-header", "X-Forwarded-User", "Header for username (proxy mode)")
 	authGroupsHeader := flag.String("auth-groups-header", "X-Forwarded-Groups", "Header for groups (proxy mode)")
 	authOIDCIssuer := flag.String("auth-oidc-issuer", "", "OIDC issuer URL")
@@ -167,6 +168,7 @@ func main() {
 			Mode:                      *authMode,
 			Secret:                    *authSecret,
 			CookieTTL:                 *authCookieTTL,
+			OIDCRefreshTTL:            *authOIDCRefreshTTL,
 			UserHeader:                *authUserHeader,
 			GroupsHeader:              *authGroupsHeader,
 			OIDCIssuer:                *authOIDCIssuer,

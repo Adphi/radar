@@ -39,7 +39,35 @@ func Authenticate(cfg Config) func(http.Handler) http.Handler {
 
 			// Try to get user from session cookie first.
 			// Cookie-valid path slides the TTL; header-auth path below is a full re-auth.
-			if session := ParseSessionCookie(r, cfg.Secret); session != nil {
+			session := ParseSessionCookie(r, cfg.Secret)
+			if session == nil && cfg.Refresh != nil {
+				if expired := ParseExpiredSessionCookie(r, cfg.Secret); expired != nil && expired.RefreshToken != "" {
+					if cfg.Revoker != nil && cfg.Revoker.IsRevoked(expired.SID) {
+						log.Printf("[auth] Revoked expired session rejected before refresh: user=%s sid=%s", expired.User.Username, expired.SID)
+						http.SetCookie(w, ClearSessionCookie())
+					} else {
+						refreshed, err := cfg.Refresh.RefreshSession(r.Context(), expired)
+						if err != nil {
+							log.Printf("[auth] OIDC refresh failed for user %q: %v", expired.User.Username, err)
+						} else if refreshed != nil && refreshed.User != nil {
+							sid := refreshed.SID
+							if sid == "" {
+								sid = expired.SID
+							}
+							if sid == "" {
+								sid = NewSessionID()
+							}
+							refreshToken := refreshed.RefreshToken
+							if refreshToken == "" {
+								refreshToken = expired.RefreshToken
+							}
+							http.SetCookie(w, CreateSessionCookieWithRefreshTTL(refreshed.User, sid, refreshed.IDToken, refreshToken, cfg.Secret, cfg.CookieTTL, cfg.OIDCRefreshTTL, secure))
+							session = &Session{User: refreshed.User, SID: sid, IDToken: refreshed.IDToken, RefreshToken: refreshToken, ExpiresAt: time.Now().Add(cfg.CookieTTL)}
+						}
+					}
+				}
+			}
+			if session != nil {
 				// Check if the session has been revoked (backchannel logout)
 				if cfg.Revoker != nil && cfg.Revoker.IsRevoked(session.SID) {
 					log.Printf("[auth] Revoked session rejected: user=%s sid=%s", session.User.Username, session.SID)
@@ -63,7 +91,7 @@ func Authenticate(cfg Config) func(http.Handler) http.Handler {
 						// Pre-upgrade cookie without sid — mint one on first sliding re-issue
 						sid = NewSessionID()
 					}
-					http.SetCookie(w, CreateSessionCookie(session.User, sid, session.IDToken, cfg.Secret, cfg.CookieTTL, secure))
+					http.SetCookie(w, CreateSessionCookieWithRefreshTTL(session.User, sid, session.IDToken, session.RefreshToken, cfg.Secret, cfg.CookieTTL, cfg.OIDCRefreshTTL, secure))
 					if remaining > cfg.CookieTTL {
 						log.Printf("[auth] TTL downgrade detected for user %q: cookie remaining %s exceeds configured TTL %s, snapping",
 							session.User.Username, remaining.Round(time.Second), cfg.CookieTTL)

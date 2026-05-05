@@ -154,6 +154,7 @@ func New(cfg Config) *Server {
 			}
 
 			s.oidcHandler = oidcHandler
+			s.authConfig.Refresh = oidcHandler
 		}
 
 		if s.authConfig.Mode == "proxy" {

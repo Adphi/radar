@@ -58,6 +58,9 @@ spec:
             {{- if ne .Values.auth.mode "none" }}
             - --auth-mode={{ .Values.auth.mode }}
             - --auth-cookie-ttl={{ .Values.auth.cookieTTL }}
+            {{- if and (eq .Values.auth.mode "oidc") .Values.auth.oidcRefreshTTL }}
+            - --auth-oidc-refresh-ttl={{ .Values.auth.oidcRefreshTTL }}
+            {{- end }}
             {{- if .Values.auth.proxy.userHeader }}
             - --auth-user-header={{ .Values.auth.proxy.userHeader }}
             {{- end }}

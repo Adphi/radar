@@ -80,7 +80,7 @@ auth:
     groupsClaim: groups                        # JWT claim containing group membership
 ```
 
-Radar requests `openid`, `profile`, and `email` by default. If your provider requires extra scopes to include group claims, set `--auth-oidc-scopes` to the full comma-separated scope list, or `auth.oidc.scopes` in Helm, for example `[openid, profile, email, groups]`.
+Radar requests `openid`, `profile`, and `email` by default. If your provider requires extra scopes to include group claims, set `--auth-oidc-scopes` to the full comma-separated scope list, or `auth.oidc.scopes` in Helm, for example `[openid, profile, email, groups]`. Radar also asks the provider for offline access during login and will use a returned refresh token to renew expired Radar sessions without a new browser login. Some providers require an explicit refresh-token scope such as `offline_access`, so include it in `scopes` when your provider documents that requirement. Refresh-token renewal is bounded by `--auth-oidc-refresh-ttl` (Helm: `auth.oidcRefreshTTL`), which defaults to 30 days; the normal session TTL still controls how often Radar revalidates through the provider.
 
 **Logout behavior:**
 
