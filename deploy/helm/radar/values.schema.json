@@ -191,6 +191,7 @@
             "existingSecret": { "type": "string" },
             "clientSecretKey": { "type": "string" },
             "redirectURL": { "type": "string" },
+            "scopes": { "type": "array", "items": { "type": "string" } },
             "groupsClaim": { "type": "string" },
             "postLogoutRedirectURL": { "type": "string" },
             "usernamePrefix": { "type": "string" },

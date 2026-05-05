@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -71,6 +72,7 @@ func main() {
 	authOIDCClientID := flag.String("auth-oidc-client-id", "", "OIDC client ID")
 	authOIDCClientSecret := flag.String("auth-oidc-client-secret", "", "OIDC client secret")
 	authOIDCRedirectURL := flag.String("auth-oidc-redirect-url", "", "OIDC redirect URL")
+	authOIDCScopes := flag.String("auth-oidc-scopes", "", "Comma-separated OIDC scopes (default: openid,profile,email)")
 	authOIDCGroupsClaim := flag.String("auth-oidc-groups-claim", "groups", "JWT claim for groups")
 	authOIDCPostLogoutRedirectURL := flag.String("auth-oidc-post-logout-redirect-url", "", "URL to redirect after OIDC provider logout (must be registered with IdP)")
 	authOIDCUsernamePrefix := flag.String("auth-oidc-username-prefix", "", "Prefix added to OIDC username for K8s impersonation (must match kube-apiserver --oidc-username-prefix)")
@@ -141,41 +143,42 @@ func main() {
 	}
 
 	cfg := app.AppConfig{
-		Kubeconfig:       *kubeconfig,
-		KubeconfigDirs:   app.ParseKubeconfigDirs(*kubeconfigDir),
-		Namespace:        *namespace,
-		Port:             *port,
-		NoBrowser:        *noBrowser,
-		DevMode:          *devMode,
-		HistoryLimit:     *historyLimit,
-		DebugEvents:      *debugEvents,
-		FakeInCluster:    *fakeInCluster,
-		DisableHelmWrite: *disableHelmWrite,
+		Kubeconfig:           *kubeconfig,
+		KubeconfigDirs:       app.ParseKubeconfigDirs(*kubeconfigDir),
+		Namespace:            *namespace,
+		Port:                 *port,
+		NoBrowser:            *noBrowser,
+		DevMode:              *devMode,
+		HistoryLimit:         *historyLimit,
+		DebugEvents:          *debugEvents,
+		FakeInCluster:        *fakeInCluster,
+		DisableHelmWrite:     *disableHelmWrite,
 		DisableExec:          *disableExec,
 		DisableLocalTerminal: *disableLocalTerminal,
 		PodShellDefault:      *podShellDefault,
-		TimelineStorage:  *timelineStorage,
-		TimelineDBPath:   *timelineDBPath,
-		PrometheusURL:    *prometheusURL,
-		MCPEnabled:       !*noMCP,
-		Version:          version,
+		TimelineStorage:      *timelineStorage,
+		TimelineDBPath:       *timelineDBPath,
+		PrometheusURL:        *prometheusURL,
+		MCPEnabled:           !*noMCP,
+		Version:              version,
 		AuthConfig: auth.Config{
-			Mode:            *authMode,
-			Secret:          *authSecret,
-			CookieTTL:       *authCookieTTL,
-			UserHeader:      *authUserHeader,
-			GroupsHeader:    *authGroupsHeader,
-			OIDCIssuer:      *authOIDCIssuer,
-			OIDCClientID:    *authOIDCClientID,
-			OIDCClientSecret: *authOIDCClientSecret,
+			Mode:                      *authMode,
+			Secret:                    *authSecret,
+			CookieTTL:                 *authCookieTTL,
+			UserHeader:                *authUserHeader,
+			GroupsHeader:              *authGroupsHeader,
+			OIDCIssuer:                *authOIDCIssuer,
+			OIDCClientID:              *authOIDCClientID,
+			OIDCClientSecret:          *authOIDCClientSecret,
 			OIDCRedirectURL:           *authOIDCRedirectURL,
+			OIDCScopes:                parseCSV(*authOIDCScopes),
 			OIDCGroupsClaim:           *authOIDCGroupsClaim,
-			OIDCPostLogoutRedirectURL:  *authOIDCPostLogoutRedirectURL,
-			OIDCUsernamePrefix:         *authOIDCUsernamePrefix,
-			OIDCGroupsPrefix:           *authOIDCGroupsPrefix,
-			OIDCInsecureSkipVerify:     *authOIDCInsecureSkipVerify,
-			OIDCCACert:                 *authOIDCCACert,
-			OIDCBackchannelLogout:      *authOIDCBackchannelLogout,
+			OIDCPostLogoutRedirectURL: *authOIDCPostLogoutRedirectURL,
+			OIDCUsernamePrefix:        *authOIDCUsernamePrefix,
+			OIDCGroupsPrefix:          *authOIDCGroupsPrefix,
+			OIDCInsecureSkipVerify:    *authOIDCInsecureSkipVerify,
+			OIDCCACert:                *authOIDCCACert,
+			OIDCBackchannelLogout:     *authOIDCBackchannelLogout,
 		},
 	}
 
@@ -279,4 +282,21 @@ func main() {
 
 	// Block forever (server is running in background)
 	select {}
+}
+
+func parseCSV(value string) []string {
+	if value == "" {
+		return nil
+	}
+
+	parts := strings.Split(value, ",")
+	items := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item != "" {
+			items = append(items, item)
+		}
+	}
+
+	return items
 }

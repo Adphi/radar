@@ -76,8 +76,11 @@ auth:
     clientID: your-client-id
     clientSecret: your-client-secret
     redirectURL: https://radar.example.com/auth/callback
+    scopes: [openid, profile, email]           # Optional; add provider-specific scopes as needed
     groupsClaim: groups                        # JWT claim containing group membership
 ```
+
+Radar requests `openid`, `profile`, and `email` by default. If your provider requires extra scopes to include group claims, set `--auth-oidc-scopes` to the full comma-separated scope list, or `auth.oidc.scopes` in Helm, for example `[openid, profile, email, groups]`.
 
 **Logout behavior:**
 
@@ -386,6 +389,7 @@ Radar uses stateless HMAC-SHA256 signed cookies for sessions. The cookie contain
 | OIDC client secret (K8s Secret) | — | `auth.oidc.existingSecret` | — |
 | OIDC client secret key | — | `auth.oidc.clientSecretKey` | `client-secret` |
 | OIDC redirect URL | `--auth-oidc-redirect-url` | `auth.oidc.redirectURL` | — |
+| OIDC scopes | `--auth-oidc-scopes` | `auth.oidc.scopes` | `openid,profile,email` |
 | OIDC groups claim | `--auth-oidc-groups-claim` | `auth.oidc.groupsClaim` | `groups` |
 | OIDC post-logout redirect | `--auth-oidc-post-logout-redirect-url` | `auth.oidc.postLogoutRedirectURL` | — |
 | OIDC username prefix | `--auth-oidc-username-prefix` | `auth.oidc.usernamePrefix` | — |
