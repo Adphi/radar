@@ -68,6 +68,7 @@ func Authenticate(cfg Config) func(http.Handler) http.Handler {
 				}
 			}
 			if session != nil {
+				user := cfg.KubernetesUser(session.User)
 				// Check if the session has been revoked (backchannel logout)
 				if cfg.Revoker != nil && cfg.Revoker.IsRevoked(session.SID) {
 					log.Printf("[auth] Revoked session rejected: user=%s sid=%s", session.User.Username, session.SID)
@@ -97,7 +98,7 @@ func Authenticate(cfg Config) func(http.Handler) http.Handler {
 							session.User.Username, remaining.Round(time.Second), cfg.CookieTTL)
 					}
 				}
-				ctx := ContextWithUser(r.Context(), session.User)
+				ctx := ContextWithUser(r.Context(), user)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}

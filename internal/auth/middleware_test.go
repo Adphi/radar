@@ -240,6 +240,37 @@ func TestMiddleware_OIDCMode_NoCookie(t *testing.T) {
 	}
 }
 
+func TestMiddleware_OIDCSessionCookie_AppliesPrefixes(t *testing.T) {
+	cfg := Config{
+		Mode:               "oidc",
+		Secret:             "test-secret",
+		CookieTTL:          time.Hour,
+		OIDCUsernamePrefix: "oidc:",
+		OIDCGroupsPrefix:   "oidc:",
+	}
+	mw := Authenticate(cfg)
+	handler := mw(http.HandlerFunc(echoUser))
+	cookie := CreateSessionCookie(&User{Username: "alice", Groups: []string{"dev"}}, NewSessionID(), "", cfg.Secret, cfg.CookieTTL, false)
+
+	req := httptest.NewRequest("GET", "/api/resources/pods", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var user User
+	json.NewDecoder(rec.Body).Decode(&user)
+	if user.Username != "oidc:alice" {
+		t.Errorf("username = %q, want %q", user.Username, "oidc:alice")
+	}
+	if len(user.Groups) != 1 || user.Groups[0] != "oidc:dev" {
+		t.Errorf("groups = %v, want [oidc:dev]", user.Groups)
+	}
+}
+
 func TestMiddleware_ProxyHeaders_GroupsTrimmed(t *testing.T) {
 	mw := Authenticate(proxyConfig())
 	handler := mw(http.HandlerFunc(echoUser))
