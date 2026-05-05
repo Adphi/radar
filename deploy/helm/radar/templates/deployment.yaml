@@ -81,10 +81,10 @@ spec:
             - --auth-oidc-post-logout-redirect-url={{ .Values.auth.oidc.postLogoutRedirectURL }}
             {{- end }}
             {{- if .Values.auth.oidc.usernamePrefix }}
-            - --auth-oidc-username-prefix={{ .Values.auth.oidc.usernamePrefix }}
+            - "--auth-oidc-username-prefix={{ .Values.auth.oidc.usernamePrefix }}"
             {{- end }}
             {{- if .Values.auth.oidc.groupsPrefix }}
-            - --auth-oidc-groups-prefix={{ .Values.auth.oidc.groupsPrefix }}
+            - "--auth-oidc-groups-prefix={{ .Values.auth.oidc.groupsPrefix }}"
             {{- end }}
             {{- if .Values.auth.oidc.caCert }}
             - --auth-oidc-ca-cert={{ .Values.auth.oidc.caCert }}
