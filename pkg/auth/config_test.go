@@ -44,6 +44,15 @@ func TestConfig_Defaults(t *testing.T) {
 	if cfg.OIDCGroupsClaim != "groups" {
 		t.Errorf("OIDCGroupsClaim = %q, want %q", cfg.OIDCGroupsClaim, "groups")
 	}
+	if got, want := cfg.OIDCScopes, []string{"openid", "profile", "email"}; len(got) != len(want) {
+		t.Fatalf("OIDCScopes len = %d, want %d", len(got), len(want))
+	} else {
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("OIDCScopes[%d] = %q, want %q", i, got[i], want[i])
+			}
+		}
+	}
 	if cfg.Secret == "" {
 		t.Error("Secret should be auto-generated when auth is enabled")
 	}
@@ -65,6 +74,7 @@ func TestConfig_Defaults_PreservesExistingValues(t *testing.T) {
 		CookieTTL:       2 * time.Hour,
 		UserHeader:      "X-Custom-User",
 		GroupsHeader:    "X-Custom-Groups",
+		OIDCScopes:      []string{"openid", "groups"},
 		OIDCGroupsClaim: "roles",
 	}
 	cfg.Defaults()
@@ -83,6 +93,9 @@ func TestConfig_Defaults_PreservesExistingValues(t *testing.T) {
 	}
 	if cfg.OIDCGroupsClaim != "roles" {
 		t.Error("Defaults should not overwrite existing OIDCGroupsClaim")
+	}
+	if len(cfg.OIDCScopes) != 2 || cfg.OIDCScopes[0] != "openid" || cfg.OIDCScopes[1] != "groups" {
+		t.Errorf("Defaults should not overwrite existing OIDCScopes, got %v", cfg.OIDCScopes)
 	}
 }
 

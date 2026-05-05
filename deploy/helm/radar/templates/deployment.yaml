@@ -74,6 +74,9 @@ spec:
             {{- if .Values.auth.oidc.redirectURL }}
             - --auth-oidc-redirect-url={{ .Values.auth.oidc.redirectURL }}
             {{- end }}
+            {{- if .Values.auth.oidc.scopes }}
+            - --auth-oidc-scopes={{ join "," .Values.auth.oidc.scopes }}
+            {{- end }}
             {{- if .Values.auth.oidc.groupsClaim }}
             - --auth-oidc-groups-claim={{ .Values.auth.oidc.groupsClaim }}
             {{- end }}

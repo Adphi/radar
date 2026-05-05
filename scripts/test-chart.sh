@@ -98,6 +98,11 @@ assert_not_contains 'name: radar-cloud-member-helm$'     "no cloud helm bindings
 assert_not_contains 'name: radar-cloud-owner-helm-admin' "no cloud helm-admin bindings"
 echo
 
+render "oidc custom scopes — scopes arg emitted" \
+  --set auth.mode=oidc --set auth.oidc.scopes='{openid,profile,email,groups}'
+assert_contains 'auth-oidc-scopes=openid,profile,email,groups' "OIDC scopes flag emitted"
+echo
+
 render "rbac.helm=true alone — gated off without auth or cloud" --set rbac.helm=true
 assert_not_contains 'name: radar-helm$'                  "no helm add-on ClusterRole without auth/cloud"
 assert_not_contains 'name: radar-helm-admin$'            "no helm-admin ClusterRole without auth/cloud"

@@ -25,17 +25,18 @@ type Config struct {
 	Revoker SessionRevoker
 
 	// OIDC mode
-	OIDCIssuer       string
-	OIDCClientID     string
-	OIDCClientSecret string
+	OIDCIssuer                string
+	OIDCClientID              string
+	OIDCClientSecret          string
 	OIDCRedirectURL           string
-	OIDCGroupsClaim           string // default "groups"
-	OIDCPostLogoutRedirectURL  string // optional, URL to redirect after IdP logout
-	OIDCUsernamePrefix         string // prefix added to OIDC username for K8s impersonation (e.g., "oidc:")
-	OIDCGroupsPrefix           string // prefix added to OIDC groups for K8s impersonation (e.g., "oidc:")
-	OIDCInsecureSkipVerify     bool   // skip TLS verification for OIDC provider (dev/test only)
-	OIDCCACert                 string // path to CA certificate file for OIDC provider TLS
-	OIDCBackchannelLogout      bool   // enable backchannel logout endpoint
+	OIDCScopes                []string // default openid, profile, email
+	OIDCGroupsClaim           string   // default "groups"
+	OIDCPostLogoutRedirectURL string   // optional, URL to redirect after IdP logout
+	OIDCUsernamePrefix        string   // prefix added to OIDC username for K8s impersonation (e.g., "oidc:")
+	OIDCGroupsPrefix          string   // prefix added to OIDC groups for K8s impersonation (e.g., "oidc:")
+	OIDCInsecureSkipVerify    bool     // skip TLS verification for OIDC provider (dev/test only)
+	OIDCCACert                string   // path to CA certificate file for OIDC provider TLS
+	OIDCBackchannelLogout     bool     // enable backchannel logout endpoint
 }
 
 // SessionRevoker checks whether a session has been revoked (e.g., via OIDC
@@ -63,6 +64,9 @@ func (c *Config) Defaults() {
 	}
 	if c.OIDCGroupsClaim == "" {
 		c.OIDCGroupsClaim = "groups"
+	}
+	if len(c.OIDCScopes) == 0 {
+		c.OIDCScopes = []string{"openid", "profile", "email"}
 	}
 	// Fall back to env vars for secrets (used by Helm chart)
 	if c.Secret == "" {

@@ -282,6 +282,32 @@ func TestHandleLogin_NoForceLoginWithoutCookie(t *testing.T) {
 	}
 }
 
+func TestOIDCScopes_Defaults(t *testing.T) {
+	got := oidcScopes(nil)
+	want := []string{"openid", "profile", "email"}
+	if len(got) != len(want) {
+		t.Fatalf("len = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("scope[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestOIDCScopes_UsesCustomScopes(t *testing.T) {
+	got := oidcScopes([]string{"openid", "profile", "email", "groups"})
+	want := []string{"openid", "profile", "email", "groups"}
+	if len(got) != len(want) {
+		t.Fatalf("len = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("scope[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
 // newTLSOIDCServer starts an httptest.NewTLSServer that serves a minimal OIDC
 // discovery document. The caller must call Close() when done.
 func newTLSOIDCServer() *httptest.Server {
@@ -289,12 +315,12 @@ func newTLSOIDCServer() *httptest.Server {
 	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"issuer":                 srv.URL,
-			"authorization_endpoint": srv.URL + "/auth",
-			"token_endpoint":         srv.URL + "/token",
-			"jwks_uri":               srv.URL + "/jwks",
-			"response_types_supported": []string{"code"},
-			"subject_types_supported":  []string{"public"},
+			"issuer":                                srv.URL,
+			"authorization_endpoint":                srv.URL + "/auth",
+			"token_endpoint":                        srv.URL + "/token",
+			"jwks_uri":                              srv.URL + "/jwks",
+			"response_types_supported":              []string{"code"},
+			"subject_types_supported":               []string{"public"},
 			"id_token_signing_alg_values_supported": []string{"RS256"},
 		})
 	}))
@@ -306,9 +332,9 @@ func TestNewOIDCHandler_FailsWithSelfSignedCert(t *testing.T) {
 	defer srv.Close()
 
 	_, err := NewOIDCHandler(context.Background(), Config{
-		Mode:         "oidc",
-		OIDCIssuer:   srv.URL,
-		OIDCClientID: "test",
+		Mode:             "oidc",
+		OIDCIssuer:       srv.URL,
+		OIDCClientID:     "test",
 		OIDCClientSecret: "secret",
 		OIDCRedirectURL:  "http://localhost/callback",
 	})

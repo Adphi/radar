@@ -230,6 +230,8 @@ auth:
     # Key within the existingSecret that holds the client secret value
     clientSecretKey: "client-secret"
     redirectURL: ""
+    # OIDC scopes requested during login. Empty uses Radar's default: openid, profile, email.
+    scopes: []
     groupsClaim: "groups"
     # URL to redirect after OIDC provider logout (must be registered with IdP)
     postLogoutRedirectURL: ""
